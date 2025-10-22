@@ -1,17 +1,25 @@
 {
   "name": "baileys-whatsapp-bot",
-  "version": "1.0.0",
-  "description": "WhatsApp bot using Baileys API",
+  "version": "1.0.1",
+  "description": "WhatsApp bot using Baileys API with Express integration for invoice sending",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js"
   },
-  "keywords": ["whatsapp", "baileys", "bot", "api"],
-  "author": "",
+  "keywords": [
+    "whatsapp",
+    "baileys",
+    "bot",
+    "api",
+    "invoice",
+    "express"
+  ],
+  "author": "Your Name",
   "license": "MIT",
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc.6",
+    "express": "^4.19.2",
     "pino": "^9.5.0",
     "qrcode-terminal": "^0.12.0"
   },

@@ -18,6 +18,18 @@ const {
 
 // === App Setup ===
 const app = express();
+
+// Enable CORS for all origins (or specify your frontend URL)
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
@@ -123,9 +135,56 @@ app.post("/send-invoice", async (req, res) => {
   }
 });
 
+// === API Endpoint for Sending Simple Message (for testing) ===
+app.post("/send-message", async (req, res) => {
+  try {
+    if (!sock) return res.status(503).json({ error: "WhatsApp not connected yet", success: false });
+
+    const { number, message } = req.body;
+    if (!number) return res.status(400).json({ error: "Phone number is required", success: false });
+    if (!message) return res.status(400).json({ error: "Message is required", success: false });
+
+    const jid = number.replace(/\D/g, "") + "@s.whatsapp.net";
+
+    await sock.sendMessage(jid, { text: message });
+
+    console.log(`✅ Message sent successfully to ${number}`);
+    res.json({ success: true, message: "Message sent successfully!" });
+  } catch (err) {
+    console.error("❌ Failed to send message:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// === API Endpoint to Check WhatsApp Status ===
+app.get("/status", (req, res) => {
+  if (!sock) {
+    return res.json({ 
+      connected: false, 
+      message: "WhatsApp not connected. Please scan QR code." 
+    });
+  }
+  
+  res.json({ 
+    connected: true, 
+    user: sock.user?.id || "Connected",
+    message: "WhatsApp is connected and ready!" 
+  });
+});
+
 // === Root Route ===
 app.get("/", (req, res) => {
-  res.send("✅ WhatsApp Invoice Bot is running!");
+  const isConnected = sock ? true : false;
+  res.json({
+    status: "running",
+    whatsapp: isConnected ? "connected" : "not connected",
+    message: "✅ WhatsApp Invoice Bot is running!",
+    endpoints: {
+      status: "GET /status",
+      sendMessage: "POST /send-message",
+      sendInvoice: "POST /send-invoice"
+    }
+  });
 });
 
 // === Start Express + WhatsApp Bot ===

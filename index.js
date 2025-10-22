@@ -104,12 +104,13 @@ async function startWhatsAppBot() {
 // === API Endpoint for Sending Invoice ===
 // Example POST request:
 // { "number": "+919876543210", "invoiceUrl": "https://example.com/invoice.pdf" }
+// OR { "number": "+919876543210", "invoiceUrl": "data:application/pdf;base64,..." }
 app.post("/send-invoice", async (req, res) => {
   try {
-    if (!sock) return res.status(503).json({ error: "WhatsApp not connected yet" });
+    if (!sock) return res.status(503).json({ error: "WhatsApp not connected yet", success: false });
 
     const { number, invoiceUrl, message } = req.body;
-    if (!number) return res.status(400).json({ error: "Customer number is required" });
+    if (!number) return res.status(400).json({ error: "Customer number is required", success: false });
 
     const jid = number.replace(/\D/g, "") + "@s.whatsapp.net";
 
@@ -119,19 +120,34 @@ app.post("/send-invoice", async (req, res) => {
     }
 
     if (invoiceUrl) {
-      await sock.sendMessage(jid, {
-        document: { url: invoiceUrl },
-        mimetype: "application/pdf",
-        fileName: "Invoice.pdf",
-        caption: "📄 Here is your invoice.",
-      });
+      // Check if it's a base64 data URL
+      if (invoiceUrl.startsWith("data:application/pdf;base64,")) {
+        // Extract base64 data and convert to buffer
+        const base64Data = invoiceUrl.split("base64,")[1];
+        const pdfBuffer = Buffer.from(base64Data, "base64");
+        
+        await sock.sendMessage(jid, {
+          document: pdfBuffer,
+          mimetype: "application/pdf",
+          fileName: "Invoice.pdf",
+          caption: "📄 Here is your invoice.",
+        });
+      } else {
+        // It's a regular URL
+        await sock.sendMessage(jid, {
+          document: { url: invoiceUrl },
+          mimetype: "application/pdf",
+          fileName: "Invoice.pdf",
+          caption: "📄 Here is your invoice.",
+        });
+      }
     }
 
     console.log(`✅ Invoice sent successfully to ${number}`);
     res.json({ success: true, message: "Invoice sent successfully!" });
   } catch (err) {
     console.error("❌ Failed to send invoice:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

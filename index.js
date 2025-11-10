@@ -30,7 +30,9 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json());
+// Increase payload size limit to handle large images (50MB)
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 const PORT = process.env.PORT || 3000;
 
 // === WhatsApp Bot Variables ===
@@ -172,6 +174,89 @@ app.post("/send-message", async (req, res) => {
   }
 });
 
+// === API Endpoint for Sending Image ===
+// Example POST request:
+// { "number": "+919876543210", "imageUrl": "https://example.com/image.jpg", "caption": "Check this out!" }
+// OR { "number": "+919876543210", "imageUrl": "data:image/jpeg;base64,...", "caption": "Check this out!" }
+// OR { "number": "+919876543210", "imagePath": "/path/to/local/image.jpg", "caption": "Check this out!" }
+app.post("/send-image", async (req, res) => {
+  try {
+    console.log("📥 Received /send-image request:", {
+      number: req.body.number,
+      hasImageUrl: !!req.body.imageUrl,
+      hasImagePath: !!req.body.imagePath,
+      caption: req.body.caption,
+      bodySize: JSON.stringify(req.body).length
+    });
+
+    if (!sock) return res.status(503).json({ error: "WhatsApp not connected yet", success: false });
+
+    const { number, imageUrl, imagePath, caption } = req.body;
+    if (!number) {
+      console.log("❌ Missing phone number");
+      return res.status(400).json({ error: "Phone number is required", success: false });
+    }
+    if (!imageUrl && !imagePath) {
+      console.log("❌ Missing image URL or path");
+      return res.status(400).json({ error: "Image URL or image path is required", success: false });
+    }
+
+    const jid = number.replace(/\D/g, "") + "@s.whatsapp.net";
+    console.log(`📞 Sending to JID: ${jid}`);
+
+    // Handle local file path
+    if (imagePath) {
+      console.log(`📂 Attempting to read file from: ${imagePath}`);
+      if (!fs.existsSync(imagePath)) {
+        console.log(`❌ File not found: ${imagePath}`);
+        return res.status(404).json({ error: "Image file not found at specified path", success: false });
+      }
+      
+      const imageBuffer = fs.readFileSync(imagePath);
+      console.log(`✅ File read successfully, size: ${imageBuffer.length} bytes`);
+      
+      await sock.sendMessage(jid, {
+        image: imageBuffer,
+        caption: caption || "",
+      });
+      console.log(`✅ Image sent successfully to ${number} from path: ${imagePath}`);
+      return res.json({ success: true, message: "Image sent successfully!" });
+    }
+
+    // Check if it's a base64 data URL
+    if (imageUrl.startsWith("data:image/")) {
+      console.log("📦 Processing base64 image");
+      // Extract base64 data and convert to buffer
+      const base64Data = imageUrl.split("base64,")[1];
+      const imageBuffer = Buffer.from(base64Data, "base64");
+      console.log(`✅ Base64 decoded, size: ${imageBuffer.length} bytes`);
+      
+      await sock.sendMessage(jid, {
+        image: imageBuffer,
+        caption: caption || "",
+      });
+    } else {
+      console.log(`🌐 Processing URL image: ${imageUrl.substring(0, 100)}...`);
+      // It's a regular URL
+      await sock.sendMessage(jid, {
+        image: { url: imageUrl },
+        caption: caption || "",
+      });
+    }
+
+    console.log(`✅ Image sent successfully to ${number}`);
+    res.json({ success: true, message: "Image sent successfully!" });
+  } catch (err) {
+    console.error("❌ Failed to send image:", err);
+    console.error("❌ Error details:", {
+      message: err.message,
+      stack: err.stack,
+      name: err.name
+    });
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // === API Endpoint to Check WhatsApp Status ===
 app.get("/status", (req, res) => {
   if (!sock) {
@@ -198,7 +283,8 @@ app.get("/", (req, res) => {
     endpoints: {
       status: "GET /status",
       sendMessage: "POST /send-message",
-      sendInvoice: "POST /send-invoice"
+      sendInvoice: "POST /send-invoice",
+      sendImage: "POST /send-image"
     }
   });
 });
